@@ -36,19 +36,17 @@ namespace TelHai.Dotnet.PlayerProject
         {
             LoadLibrary();
         }
-        
+
 
         // --- EMPTY PLACEHOLDERS TO MAKE IT BUILD ---
         private void BtnPlay_Click(object sender, RoutedEventArgs e)
         {
-            //if (sender is Button btn)
-            //{
-            //    btn.Background = Brushes.LightGreen; // Disable button to prevent multiple clicks
-            //}
-            
-            mediaPlayer.Play();
-            timer.Start();
-            txtStatus.Text = "Playing";
+            if (lstLibrary.SelectedItem is not MusicTrack track)
+            {
+                txtStatus.Text = "No track selected.";
+                return;
+            }
+            this.StartTrack(track);
         }
         private void BtnPause_Click(object sender, RoutedEventArgs e)
         {
@@ -115,17 +113,6 @@ namespace TelHai.Dotnet.PlayerProject
             }
         }
 
-        private void LstLibrary_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-        {
-            if (lstLibrary.SelectedItem is MusicTrack track)
-            {
-                mediaPlayer.Open(new Uri(track.FilePath));
-                mediaPlayer.Play();
-                timer.Start();
-                txtCurrentSong.Text = track.Title;
-                txtStatus.Text = "Playing";
-            }
-        }
 
         // Helper method to refresh the box
         private void UpdateLibraryUI()
@@ -191,14 +178,33 @@ namespace TelHai.Dotnet.PlayerProject
             SaveLibrary();
         }
 
-        //private void MusicPlayer_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-        //{
-        //    MessageBox.Show("double click");
-        //    MainWindow p = new MainWindow();
+        private void lstLibrary_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (lstLibrary.SelectedItem is not MusicTrack track) return;
 
-        //    p.Title = "YYYYY";
-        //    p.Show();
-        //}
+            txtCurrentSong.Text = track.Title;   
+            txtFilePath.Text = track.FilePath;
+
+        }
+        private void LstLibrary_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (lstLibrary.SelectedItem is MusicTrack track)
+            {
+                this.StartTrack(track);
+            }
+        }
+        private void StartTrack(MusicTrack track)
+        {
+            mediaPlayer.Stop();
+            mediaPlayer.Open(new Uri(track.FilePath));
+            mediaPlayer.Play();
+            sliderProgress.Value = 0;
+            timer.Start();
+            txtCurrentSong.Text = track.Title;
+            txtStatus.Text = "Playing";
+        }
+       
+
 
 
     }
