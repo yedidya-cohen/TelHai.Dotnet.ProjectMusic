@@ -1,0 +1,152 @@
+### FILENAME: AppSettings.cs
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
+
+namespace TelHai.Dotnet.PlayerProject
+{
+    public class AppSettings
+    {
+        public List<string> MusicFolders { get; set; } = new List<string>();
+        private const string SETTINGS_FILE = "settings.json";
+
+        public static void Save(AppSettings settings)
+        {
+            string json = JsonSerializer.Serialize(settings);
+            File.WriteAllText(SETTINGS_FILE, json);
+        }
+
+        public static AppSettings Load()
+        {
+            if (File.Exists(SETTINGS_FILE))
+            {
+                string json = File.ReadAllText(SETTINGS_FILE);
+                return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+            }
+            return new AppSettings();
+        }
+    }
+}
+
+### FILENAME: MusicPlayer.xaml
+(Partial XAML Structure for Context)
+Window: MusicPlayer
+Controls: 
+- txtStatus, txtCurrentSong, txtFilePath
+- imgArtwork
+- txtSongName, txtArtistName, txtAlbumName
+- sliderProgress, sliderVolume
+- Buttons: PLAY, STOP, PAUSE, Add MP3, Remove, Settings
+- ListBox: lstLibrary
+
+### FILENAME: MusicPlayer.xaml.cs
+using Microsoft.Win32;
+using System.IO;
+using System.Text.Json;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
+using TelHai.Dotnet.PlayerProject.Models;
+using TelHai.Dotnet.PlayerProject.Services;
+
+namespace TelHai.Dotnet.PlayerProject
+{
+    public partial class MusicPlayer : Window
+    {
+        private MediaPlayer mediaPlayer = new MediaPlayer();
+        private DispatcherTimer timer = new DispatcherTimer();
+        private List<MusicTrack> library = new List<MusicTrack>();
+        private bool isDragging = false;
+        private const string FILE_NAME = "library.json";
+        private readonly ItunesService _itunes = new ItunesService();
+        private CancellationTokenSource? _cts;
+
+        public MusicPlayer()
+        {
+            InitializeComponent();
+            timer.Interval = TimeSpan.FromMilliseconds(500);
+            timer.Tick += new EventHandler(Timer_Tick);
+            this.Loaded += MusicPlayer_Loaded;
+        }
+
+        private void MusicPlayer_Loaded(object sender, RoutedEventArgs e) => LoadLibrary();
+
+        private void BtnPlay_Click(object sender, RoutedEventArgs e) { if (lstLibrary.SelectedItem is MusicTrack track) StartTrack(track); }
+        private void BtnPause_Click(object sender, RoutedEventArgs e) { mediaPlayer.Pause(); txtStatus.Text = "Paused"; }
+        private void BtnStop_Click(object sender, RoutedEventArgs e) { mediaPlayer.Stop(); timer.Stop(); sliderProgress.Value = 0; txtStatus.Text = "Stopped"; }
+        
+        private void BtnAdd_Click(object sender, RoutedEventArgs e) { /* OpenFileDialog logic */ }
+        private void BtnRemove_Click(object sender, RoutedEventArgs e) { /* Remove logic */ }
+        
+        private void StartTrack(MusicTrack track)
+        {
+            _cts?.Cancel(); _cts?.Dispose(); _cts = new CancellationTokenSource();
+            mediaPlayer.Stop(); mediaPlayer.Open(new Uri(track.FilePath)); mediaPlayer.Play();
+            timer.Start();
+            _ = LoadSongInfoAsync(track, _cts.Token);
+        }
+
+        private async Task LoadSongInfoAsync(MusicTrack track, CancellationToken token)
+        {
+            try {
+                var info = await _itunes.SearchOneAsync(track.Title, token);
+                if (info != null && !token.IsCancellationRequested) {
+                    // Update UI with iTunes info
+                    txtSongName.Text = info.TrackName;
+                    txtArtistName.Text = info.ArtistName;
+                    if (!string.IsNullOrWhiteSpace(info.ArtworkUrl)) UpdateArtworkFromUrl(info.ArtworkUrl);
+                }
+            } catch { /* Error handling */ }
+        }
+        // ... (Remaining Helper methods: UpdateLibraryUI, SaveLibrary, LoadLibrary, etc.)
+    }
+}
+
+### FILENAME: Services/ItunesService.cs
+using System.Net.Http;
+using System.Text.Json;
+using TelHai.Dotnet.PlayerProject.Models;
+
+namespace TelHai.Dotnet.PlayerProject.Services
+{
+    public class ItunesService
+    {
+        private static readonly HttpClient _httpClient = new HttpClient() { BaseAddress = new Uri("https://itunes.apple.com/") };
+        
+        public async Task<ItunesTrackInfo?> SearchOneAsync(string songTitle, CancellationToken cancellationToken) 
+        {
+            if (string.IsNullOrWhiteSpace(songTitle)) return null;
+            string encodedTerm = Uri.EscapeDataString(songTitle);
+            string url = $"search?term={encodedTerm}&media=music&limit=1";
+            
+            using HttpResponseMessage response = await _httpClient.GetAsync(url, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            string json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var data = JsonSerializer.Deserialize<ItunesSearchResponse>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            
+            var item = data?.Results?.FirstOrDefault();
+            if (item == null) return null;
+
+            return new ItunesTrackInfo { TrackName = item.TrackName, ArtistName = item.ArtistName, AlbumName = item.CollectionName, ArtworkUrl = item.ArtworkUrl100 };
+        }
+    }
+}
+
+### FILENAME: Models/MusicTrack.cs
+public class MusicTrack {
+    public string Title { get; set; } = string.Empty;
+    public string FilePath { get; set; } = string.Empty;
+    public override string ToString() { return Title; }
+}
+
+### FILENAME: Models/ItunesTrackInfo.cs
+public class ItunesTrackInfo {
+    public string? TrackName { get; set; }
+    public string? ArtistName { get; set; }
+    public string? AlbumName { get; set; }
+    public string? ArtworkUrl { get; set; }
+}
