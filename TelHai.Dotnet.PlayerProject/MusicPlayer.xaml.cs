@@ -5,8 +5,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using TelHai.Dotnet.PlayerProject.Models;
+using TelHai.Dotnet.PlayerProject.Services;
 
 namespace TelHai.Dotnet.PlayerProject
 {
@@ -20,13 +22,14 @@ namespace TelHai.Dotnet.PlayerProject
         private List<MusicTrack> library = new List<MusicTrack>();
         private bool isDragging = false;
         private const string FILE_NAME = "library.json";
+        private readonly ItunesService _itunes = new ItunesService();
+        private CancellationTokenSource? _cts;
 
         public MusicPlayer()
         {
             //--init all Hardcoded xmal into Elemnts Tree
             InitializeComponent();
-            //this.MouseDoubleClick += MusicPlayer_MouseDoubleClick;
-            //this.MouseDoubleClick += new MouseButtonEventHandler(MusicPlayer_MouseDoubleClick);
+            
             timer.Interval = TimeSpan.FromMilliseconds(500);
             timer.Tick += new EventHandler(Timer_Tick);
             this.Loaded += MusicPlayer_Loaded;
@@ -36,19 +39,17 @@ namespace TelHai.Dotnet.PlayerProject
         {
             LoadLibrary();
         }
-        
+
 
         // --- EMPTY PLACEHOLDERS TO MAKE IT BUILD ---
         private void BtnPlay_Click(object sender, RoutedEventArgs e)
         {
-            //if (sender is Button btn)
-            //{
-            //    btn.Background = Brushes.LightGreen; // Disable button to prevent multiple clicks
-            //}
-            
-            mediaPlayer.Play();
-            timer.Start();
-            txtStatus.Text = "Playing";
+            if (lstLibrary.SelectedItem is not MusicTrack track)
+            {
+                txtStatus.Text = "No track selected.";
+                return;
+            }
+            this.StartTrack(track);
         }
         private void BtnPause_Click(object sender, RoutedEventArgs e)
         {
@@ -115,17 +116,6 @@ namespace TelHai.Dotnet.PlayerProject
             }
         }
 
-        private void LstLibrary_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-        {
-            if (lstLibrary.SelectedItem is MusicTrack track)
-            {
-                mediaPlayer.Open(new Uri(track.FilePath));
-                mediaPlayer.Play();
-                timer.Start();
-                txtCurrentSong.Text = track.Title;
-                txtStatus.Text = "Playing";
-            }
-        }
 
         // Helper method to refresh the box
         private void UpdateLibraryUI()
@@ -191,15 +181,115 @@ namespace TelHai.Dotnet.PlayerProject
             SaveLibrary();
         }
 
-        //private void MusicPlayer_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-        //{
-        //    MessageBox.Show("double click");
-        //    MainWindow p = new MainWindow();
+        private void lstLibrary_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (lstLibrary.SelectedItem is not MusicTrack track) return;
 
-        //    p.Title = "YYYYY";
-        //    p.Show();
-        //}
+            txtCurrentSong.Text = track.Title;   
+            txtFilePath.Text = track.FilePath;
+            txtSongName.Text = "-";
+            txtArtistName.Text = "-";
+            txtAlbumName.Text = "-";
+            txtPath.Text = "-";
+            SetDefaultArtwork();
 
+        }
+        private void LstLibrary_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (lstLibrary.SelectedItem is MusicTrack track)
+            {
+                this.StartTrack(track);
+            }
+        }
+        private void StartTrack(MusicTrack track)
+        {
+            _cts?.Cancel();
+            _cts?.Dispose();
+            _cts = new CancellationTokenSource();
+            var token = _cts.Token;
 
+            mediaPlayer.Stop();
+            mediaPlayer.Open(new Uri(track.FilePath));
+            mediaPlayer.Play();
+            sliderProgress.Value = 0;
+            timer.Start();
+
+            txtCurrentSong.Text = track.Title;
+            txtStatus.Text = "Playing";
+            txtFilePath.Text = track.FilePath;
+            txtSongName.Text = "-";
+            txtArtistName.Text = "-";
+            txtAlbumName.Text = "-";
+            SetDefaultArtwork();
+            _ = LoadSongInfoAsync(track, token);
+        }
+        private void SetDefaultArtwork()
+        {
+            imgArtwork.Source = new BitmapImage(new Uri("C:\\Users\\yedid\\Third Year\\C#\\" +
+                                "TelHai.Dotnet.PlayerProject\\TelHai.Dotnet.PlayerProject\\Assets\\placeholder.png"));
+        }
+        private async Task LoadSongInfoAsync(MusicTrack track, CancellationToken token)
+        {
+            try
+            {
+                // Assumption: Title is the artist term or song name
+                var query = track.Title;
+
+                var info = await _itunes.SearchOneAsync(query, token);
+
+                if (token.IsCancellationRequested)
+                    return;
+
+                if (info == null)
+                {
+                    // no results: keep local title+path and default image
+                    return;
+                }
+
+                // Update UI with iTunes data
+                txtSongName.Text = string.IsNullOrWhiteSpace(info.TrackName)
+                    ? track.Title
+                    : info.TrackName;
+
+                txtArtistName.Text = string.IsNullOrWhiteSpace(info.ArtistName) ? "-" : info.ArtistName;
+                txtAlbumName.Text = string.IsNullOrWhiteSpace(info.AlbumName) ? "-" : info.AlbumName;
+                txtPath.Text = track.FilePath;
+
+                if (!string.IsNullOrWhiteSpace(info.ArtworkUrl))
+                    UpdateArtworkFromUrl(info.ArtworkUrl);
+                else
+                    SetDefaultArtwork();
+            }
+            catch (OperationCanceledException)
+            {
+                // expected when switching tracks quickly
+            }
+            catch
+            {
+                // requirement: on error show filename without extension + local path
+                txtSongName.Text = System.IO.Path.GetFileNameWithoutExtension(track.FilePath);
+                txtPath.Text = track.FilePath;
+
+                txtArtistName.Text = "-";
+                txtAlbumName.Text = "-";
+                SetDefaultArtwork();
+            }
+        }
+        private void UpdateArtworkFromUrl(string url)
+        {
+            try
+            {
+                var bmp = new BitmapImage();
+                bmp.BeginInit();
+                bmp.UriSource = new Uri(url);
+                bmp.CacheOption = BitmapCacheOption.OnLoad;
+                bmp.EndInit();
+                imgArtwork.Source = bmp;
+            }
+            catch
+            {
+                SetDefaultArtwork();
+            }
+        }
     }
 }

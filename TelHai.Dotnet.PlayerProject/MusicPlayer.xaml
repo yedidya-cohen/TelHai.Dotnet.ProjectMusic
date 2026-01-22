@@ -16,7 +16,32 @@
         <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,20,0">
             <TextBlock x:Name="txtStatus" Text="Ready" Foreground="#AAA" HorizontalAlignment="Center"/>
             <TextBlock x:Name="txtCurrentSong" Text="No Song Selected" FontSize="20" FontWeight="Bold" Margin="0,10,0,20" HorizontalAlignment="Center"/>
+            <TextBlock x:Name="txtFilePath" Text="" Foreground="#AAA" TextWrapping="Wrap" Margin="0,0,0,10" HorizontalAlignment="Center"/>
+            <Grid Margin="0,0,0,20">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="140"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
 
+                <Border Grid.Column="0" BorderThickness="1" BorderBrush="#444" CornerRadius="6" Padding="4">
+                    <Image x:Name="imgArtwork" Stretch="UniformToFill" Height="130" Width="130"/>
+                </Border>
+
+                <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                    <TextBlock Text="Song:" FontWeight="Bold"/>
+                    <TextBlock x:Name="txtSongName" Text="-" TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+
+                    <TextBlock Text="Artist:" FontWeight="Bold"/>
+                    <TextBlock x:Name="txtArtistName" Text="-" TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                    <TextBlock Text="Album:" FontWeight="Bold"/>
+                    <TextBlock x:Name="txtAlbumName" Text="-" TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                    <TextBlock Text="Path:" FontWeight="Bold"/>
+                    <TextBlock x:Name="txtPath" Text="-" TextWrapping="Wrap" FontSize="11" Foreground="#BBB"/>
+                </StackPanel>
+            </Grid>
             <Slider x:Name="sliderProgress" IsMoveToPointEnabled="True" Margin="0,0,0,20"
                     PreviewMouseLeftButtonDown="Slider_DragStarted"
                     PreviewMouseLeftButtonUp="Slider_DragCompleted"/>
@@ -42,7 +67,9 @@
 
             <TextBlock Text="Library" FontSize="16" FontWeight="Bold" Margin="0,0,0,10"/>
 
-            <ListBox x:Name="lstLibrary" Grid.Row="1" Background="#333" Foreground="White" MouseDoubleClick="LstLibrary_MouseDoubleClick"/>
+            <ListBox x:Name="lstLibrary" Grid.Row="1" Background="#333" Foreground="White"
+                     MouseDoubleClick="LstLibrary_MouseDoubleClick"
+                     SelectionChanged="lstLibrary_SelectionChanged"/>
 
             <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
                 <Button Content="Add MP3" Click="BtnAdd_Click"  Margin="5"/>
