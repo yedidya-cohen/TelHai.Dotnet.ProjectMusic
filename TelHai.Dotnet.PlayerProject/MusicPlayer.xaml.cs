@@ -187,6 +187,7 @@ namespace TelHai.Dotnet.PlayerProject
 
             txtCurrentSong.Text = track.Title;   
             txtFilePath.Text = track.FilePath;
+            txtSongName.Text = "-";
             txtArtistName.Text = "-";
             txtAlbumName.Text = "-";
             txtPath.Text = "-";
@@ -216,6 +217,7 @@ namespace TelHai.Dotnet.PlayerProject
             txtCurrentSong.Text = track.Title;
             txtStatus.Text = "Playing";
             txtFilePath.Text = track.FilePath;
+            txtSongName.Text = "-";
             txtArtistName.Text = "-";
             txtAlbumName.Text = "-";
             SetDefaultArtwork();
@@ -230,7 +232,7 @@ namespace TelHai.Dotnet.PlayerProject
         {
             try
             {
-                // Assumption: Title is the artist term (per your request)
+                // Assumption: Title is the artist term or song name
                 var query = track.Title;
 
                 var info = await _itunes.SearchOneAsync(query, token);
