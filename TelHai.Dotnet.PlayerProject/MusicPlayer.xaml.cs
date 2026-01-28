@@ -221,12 +221,12 @@ namespace TelHai.Dotnet.PlayerProject
 
             //2) subscribe/register to OnScanCompleted Event
             // Listen for the results
+            //here the event is not null
             settingsWin.OnScanCompleted += SettingsWin_OnScanCompleted;
+            //show Dialog/Dialog box
             settingsWin.ShowDialog();
-
-            
         }
-
+        //callbacl of the event with the parameters
         private void SettingsWin_OnScanCompleted(List<MusicTrack> newTracksEventData)
         {
             foreach (var track in newTracksEventData)
