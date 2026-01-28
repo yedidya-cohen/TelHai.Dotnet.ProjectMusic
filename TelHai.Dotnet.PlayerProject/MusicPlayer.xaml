@@ -50,6 +50,7 @@
                 <Button Content="STOP" Click="BtnStop_Click" Width="80" Height="40" Margin="5"/>
                 <Button Content="PLAY" Click="BtnPlay_Click" Width="100" Height="40" Margin="5" FontWeight="Bold" Background="#007ACC" Foreground="White"/>
                 <Button Content="PAUSE" Click="BtnPause_Click" Width="80" Height="40" Margin="5"/>
+                <Button Content="Edit Details" Click="BtnEdit_Click" Width="80" Margin="5"/>
             </StackPanel>
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,20,0,0">

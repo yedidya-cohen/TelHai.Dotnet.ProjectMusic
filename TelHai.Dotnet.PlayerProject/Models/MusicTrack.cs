@@ -10,11 +10,14 @@ namespace TelHai.Dotnet.PlayerProject.Models
     {
         public string Title { get; set; } = string.Empty;
         public string FilePath { get; set; } = string.Empty;
+        public string? Artist { get; set; }
+        public string? Album { get; set; }
+        public List<string> Images { get; set; } = new List<string>();
 
         // This makes sure the ListBox shows the Name, not "MyMusicPlayer.MusicTrack"
         public override string ToString()
         {
-            return Title;
+            return string.IsNullOrEmpty(Artist) ? Title : $"{Title} - {Artist}";
         }
     }
 

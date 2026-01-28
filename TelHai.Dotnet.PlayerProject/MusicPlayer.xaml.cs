@@ -1,4 +1,7 @@
-﻿using Microsoft.Win32;
+﻿///Yedidya Cohen 207515149
+///
+
+using Microsoft.Win32;
 using System.IO;
 using System.Text.Json;
 using System.Windows;
@@ -8,6 +11,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using TelHai.Dotnet.PlayerProject.Models;
+using TelHai.Dotnet.PlayerProject.MVVM;
 using TelHai.Dotnet.PlayerProject.Services;
 
 namespace TelHai.Dotnet.PlayerProject
@@ -24,6 +28,10 @@ namespace TelHai.Dotnet.PlayerProject
         private const string FILE_NAME = "library.json";
         private readonly ItunesService _itunes = new ItunesService();
         private CancellationTokenSource? _cts;
+        private MusicTrack? currentPlayingTrack;
+        private int currentImageIndex = 0;
+        private int carouselCounter = 0;
+        private const int CAROUSEL_INTERVAL_TICKS = 10; // 10 ticks * 0.5s = 5 seconds per image
 
         public MusicPlayer()
         {
@@ -127,9 +135,34 @@ namespace TelHai.Dotnet.PlayerProject
         }
         private void SaveLibrary()
         {
-            var options = new JsonSerializerOptions { WriteIndented = true };
-            string json = JsonSerializer.Serialize(library,options);
-            File.WriteAllText(FILE_NAME, json);
+            try
+            {
+                string json = JsonSerializer.Serialize(library, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(FILE_NAME, json);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to save library: {ex.Message}");
+            }
+            
+        }
+        private void UpdateUIFromTrack(MusicTrack track)
+        {
+            // Update Text
+            txtSongName.Text = track.Title;
+            txtArtistName.Text = track.Artist ?? "Unknown Artist";
+            txtAlbumName.Text = track.Album ?? "Unknown Album";
+            txtPath.Text = track.FilePath;
+
+            // Update Image (Show the first one if available)
+            if (track.Images.Count > 0)
+            {
+                UpdateArtworkFromUrl(track.Images[0]);
+            }
+            else
+            {
+                SetDefaultArtwork();
+            }
         }
         private void LoadLibrary()
         {
@@ -145,13 +178,41 @@ namespace TelHai.Dotnet.PlayerProject
         }
         private void Timer_Tick(object? sender, EventArgs e)
         {
-            // Update slider ONLY if music is loaded AND user is NOT holding the handle
-            if (mediaPlayer.Source != null && mediaPlayer.NaturalDuration.HasTimeSpan && !isDragging)
+            if (mediaPlayer.Source == null || !mediaPlayer.NaturalDuration.HasTimeSpan) return;
+
+            
+            sliderProgress.Minimum = 0;
+            sliderProgress.Maximum = mediaPlayer.NaturalDuration.TimeSpan.TotalSeconds;
+            sliderProgress.Value = mediaPlayer.Position.TotalSeconds;
+
+            // 2. NEW: Carousel Logic
+            if (currentPlayingTrack != null && currentPlayingTrack.Images.Count > 1)
             {
-                sliderProgress.Maximum = mediaPlayer.NaturalDuration.TimeSpan.TotalSeconds;
-                sliderProgress.Value = mediaPlayer.Position.TotalSeconds;
+                carouselCounter++;
+
+                // Every 5 seconds (10 ticks), switch image
+                if (carouselCounter >= CAROUSEL_INTERVAL_TICKS)
+                {
+                    carouselCounter = 0; // Reset counter
+
+                    // Move to next index, wrapping around to 0 if at the end
+                    currentImageIndex = (currentImageIndex + 1) % currentPlayingTrack.Images.Count;
+
+                    // Update the UI
+                    UpdateArtworkFromUrl(currentPlayingTrack.Images[currentImageIndex]);
+                }
             }
         }
+        //private void Timer_Tick(object? sender, EventArgs e)
+        //{
+
+        //    // Update slider ONLY if music is loaded AND user is NOT holding the handle
+        //    if (mediaPlayer.Source != null && mediaPlayer.NaturalDuration.HasTimeSpan && !isDragging)
+        //    {
+        //        sliderProgress.Maximum = mediaPlayer.NaturalDuration.TimeSpan.TotalSeconds;
+        //        sliderProgress.Value = mediaPlayer.Position.TotalSeconds;
+        //    }
+        //}
 
         private void BtnSettings_Click(object sender, RoutedEventArgs e)
         {
@@ -160,12 +221,12 @@ namespace TelHai.Dotnet.PlayerProject
 
             //2) subscribe/register to OnScanCompleted Event
             // Listen for the results
+            //here the event is not null
             settingsWin.OnScanCompleted += SettingsWin_OnScanCompleted;
+            //show Dialog/Dialog box
             settingsWin.ShowDialog();
-
-            
         }
-
+        //callbacl of the event with the parameters
         private void SettingsWin_OnScanCompleted(List<MusicTrack> newTracksEventData)
         {
             foreach (var track in newTracksEventData)
@@ -203,6 +264,10 @@ namespace TelHai.Dotnet.PlayerProject
         }
         private void StartTrack(MusicTrack track)
         {
+            currentPlayingTrack = track;
+            currentImageIndex = 0;
+            carouselCounter = 0;
+
             _cts?.Cancel();
             _cts?.Dispose();
             _cts = new CancellationTokenSource();
@@ -230,43 +295,50 @@ namespace TelHai.Dotnet.PlayerProject
         }
         private async Task LoadSongInfoAsync(MusicTrack track, CancellationToken token)
         {
+            // Check Local Cache First - no pictures or artist name
+            if (!string.IsNullOrEmpty(track.Artist) || track.Images.Count > 0)
+            {
+                UpdateUIFromTrack(track);
+                return; //  No need to call API.
+            }
+
+            // If we are here, Fetch from API.
             try
             {
-                // Assumption: Title is the artist term or song name
-                var query = track.Title;
+                txtStatus.Text = "Fetching info...";
+                var info = await _itunes.SearchOneAsync(track.Title, token);
 
-                var info = await _itunes.SearchOneAsync(query, token);
-
-                if (token.IsCancellationRequested)
-                    return;
-
-                if (info == null)
+                if (info != null && !token.IsCancellationRequested)
                 {
-                    // no results: keep local title+path and default image
-                    return;
+                    // 1. Update the Model (The Track Object)
+                    track.Artist = info.ArtistName;
+                    track.Album = info.AlbumName;
+
+                    if (!string.IsNullOrEmpty(info.ArtworkUrl))
+                    {
+                        // Ensure unique images
+                        if (!track.Images.Contains(info.ArtworkUrl))
+                        {
+                            track.Images.Add(info.ArtworkUrl);
+                        }
+                    }
+
+                    // 2. Save to JSON 
+                    SaveLibrary();
+
+                    // 3. Update the UI
+                    UpdateUIFromTrack(track);
+                    txtStatus.Text = "Info Updated";
                 }
-
-                // Update UI with iTunes data
-                txtSongName.Text = string.IsNullOrWhiteSpace(info.TrackName)
-                    ? track.Title
-                    : info.TrackName;
-
-                txtArtistName.Text = string.IsNullOrWhiteSpace(info.ArtistName) ? "-" : info.ArtistName;
-                txtAlbumName.Text = string.IsNullOrWhiteSpace(info.AlbumName) ? "-" : info.AlbumName;
-                txtPath.Text = track.FilePath;
-
-                if (!string.IsNullOrWhiteSpace(info.ArtworkUrl))
-                    UpdateArtworkFromUrl(info.ArtworkUrl);
-                else
-                    SetDefaultArtwork();
             }
             catch (OperationCanceledException)
             {
                 // expected when switching tracks quickly
             }
-            catch
+            catch (Exception)
             {
-                // requirement: on error show filename without extension + local path
+                // Swallow API errors so music keeps playing
+                txtStatus.Text = "Info not found";
                 txtSongName.Text = System.IO.Path.GetFileNameWithoutExtension(track.FilePath);
                 txtPath.Text = track.FilePath;
 
@@ -275,6 +347,53 @@ namespace TelHai.Dotnet.PlayerProject
                 SetDefaultArtwork();
             }
         }
+        //private async Task LoadSongInfoAsync(MusicTrack track, CancellationToken token)
+        //{
+        //    try
+        //    {
+        //        // Assumption: Title is the artist term or song name
+        //        var query = track.Title;
+
+        //        var info = await _itunes.SearchOneAsync(query, token);
+
+        //        if (token.IsCancellationRequested)
+        //            return;
+
+        //        if (info == null)
+        //        {
+        //            // no results: keep local title+path and default image
+        //            return;
+        //        }
+
+        //        // Update UI with iTunes data
+        //        txtSongName.Text = string.IsNullOrWhiteSpace(info.TrackName)
+        //            ? track.Title
+        //            : info.TrackName;
+
+        //        txtArtistName.Text = string.IsNullOrWhiteSpace(info.ArtistName) ? "-" : info.ArtistName;
+        //        txtAlbumName.Text = string.IsNullOrWhiteSpace(info.AlbumName) ? "-" : info.AlbumName;
+        //        txtPath.Text = track.FilePath;
+
+        //        if (!string.IsNullOrWhiteSpace(info.ArtworkUrl))
+        //            UpdateArtworkFromUrl(info.ArtworkUrl);
+        //        else
+        //            SetDefaultArtwork();
+        //    }
+        //    catch (OperationCanceledException)
+        //    {
+        //        // expected when switching tracks quickly
+        //    }
+        //    catch
+        //    {
+        //        // requirement: on error show filename without extension + local path
+        //        txtSongName.Text = System.IO.Path.GetFileNameWithoutExtension(track.FilePath);
+        //        txtPath.Text = track.FilePath;
+
+        //        txtArtistName.Text = "-";
+        //        txtAlbumName.Text = "-";
+        //        SetDefaultArtwork();
+        //    }
+        //}
         private void UpdateArtworkFromUrl(string url)
         {
             try
@@ -289,6 +408,36 @@ namespace TelHai.Dotnet.PlayerProject
             catch
             {
                 SetDefaultArtwork();
+            }
+        }
+        private void BtnEdit_Click(object sender, RoutedEventArgs e)
+        {
+            // 1. Validation: Is a track selected?
+            if (lstLibrary.SelectedItem is not MusicTrack selectedTrack)
+            {
+                MessageBox.Show("Please select a song from the library first.");
+                return;
+            }
+
+            // 2. Prepare the VM and View
+            var vm = new SongEditorViewModel(selectedTrack);
+            var editorWindow = new SongEditorWindow(vm);
+
+            // 3. Show the window and wait for it to close
+            // ShowDialog() returns true if DialogResult was set to true (Saved)
+            if (editorWindow.ShowDialog() == true)
+            {
+                // 4. If Saved: Persist changes
+                SaveLibrary();
+
+                // Refresh the ListBox to show new Title/Artist
+                lstLibrary.Items.Refresh();
+
+                // If the edited song is currently playing, update the main display too
+                if (txtFilePath.Text == selectedTrack.FilePath)
+                {
+                    UpdateUIFromTrack(selectedTrack);
+                }
             }
         }
     }
